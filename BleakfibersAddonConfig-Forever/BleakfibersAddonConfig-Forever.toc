@@ -1,0 +1,9 @@
+## Interface: 16001
+## Title: Bleakfiber's Addon Config - Forever
+## Notes: Centralized configuration hub for Bleakfiber's standalone addons.
+## Author: Bleakfiber
+## Version: 1.0.01
+## SavedVariables: BleakfibersConfigDB
+
+Core.lua
+UI.lua
