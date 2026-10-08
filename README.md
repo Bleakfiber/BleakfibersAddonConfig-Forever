@@ -74,7 +74,9 @@ Effortless character and specialization management:
 
 ### 5. Module Registry API
 Designed for modular expansion:
-- Simple registration hook (`BAC:RegisterModule`) allows suite addons to register their presence, configuration tables, profile sync callbacks, and mover controllers.
+- Simple registration hook (`BAC:RegisterModule`) allows suite addons and third-party/community addons to register their presence, configuration tables, profile sync callbacks, and mover controllers.
+- Community addons automatically appear under the dedicated **OTHER ADDONS** sidebar group.
+- Full API documentation, widget toolkits, and boilerplate code are provided in the **[Developer Integration Guide](INTEGRATION_GUIDE.md)**.
 - Addons function completely standalone when BAC is absent, and automatically integrate when BAC is present.
 
 ---
@@ -152,3 +154,4 @@ Bleakfiber's Addon Config serves as the central hub for the entire **Bleakfiber 
 * **License**: Restricted - Source-Available (All Rights Reserved, No Derivatives). See [LICENSE.md](LICENSE.md) for full terms.
 * **Issues & Feedback**: Encounter a bug or have a feature request? Open an issue on our [GitHub Issue Tracker](https://github.com/Bleakfiber/BleakfibersAddonConfig-Forever/issues).
 * **Author**: Bleakfiber
+
