@@ -10,7 +10,7 @@ local BAC = BleakfibersAddonConfigForever
 -- Module registry and ordered keys
 BAC.modules = {}
 BAC.moduleOrder = {}
-BAC.version = "1.0.9"
+BAC.version = "1.1.0"
 
 -- Database defaults
 local DB_DEFAULTS = {
@@ -552,6 +552,7 @@ end
 -------------------------------------------------------------------------------]]
 local eventFrame = CreateFrame("Frame")
 eventFrame:RegisterEvent("ADDON_LOADED")
+eventFrame:RegisterEvent("PLAYER_LOGIN")
 eventFrame:RegisterEvent("PLAYER_LOGOUT")
 
 eventFrame:SetScript("OnEvent", function(self, event, arg1)
@@ -567,7 +568,16 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
             end
         end
 
+        if BAC.InitializeGameMenuButton then
+            BAC:InitializeGameMenuButton()
+        end
+
         DEFAULT_CHAT_FRAME:AddMessage("|cFFFFD100Bleakfiber's Addon Config - Forever|r v" .. BAC.version .. " loaded. Type |cFF00FF00/bac|r or |cFF00FF00/bleakfiber|r to open.")
+
+    elseif event == "PLAYER_LOGIN" then
+        if BAC.InitializeGameMenuButton then
+            BAC:InitializeGameMenuButton()
+        end
 
     elseif event == "PLAYER_LOGOUT" then
         -- Persist last window state if frame exists

@@ -1534,3 +1534,216 @@ function BAC:UpdateProfileUI()
     end
 end
 
+--[[-----------------------------------------------------------------------------
+    Escape Game Menu Integration
+    Adds a Bleakfiber's Config button below Macros and above Logout (disabled in combat)
+-------------------------------------------------------------------------------]]
+local gameMenuButton = nil
+
+local function FindGameMenuButton(targetText)
+    if not targetText then return nil end
+
+    -- 1. Check classic global names
+    if targetText == "Macros" or targetText == MACROS then
+        if _G.GameMenuButtonMacros then return _G.GameMenuButtonMacros end
+    elseif targetText == "Logout" or targetText == LOGOUT then
+        if _G.GameMenuButtonLogout then return _G.GameMenuButtonLogout end
+    elseif targetText == "Options" or targetText == OPTIONS then
+        if _G.GameMenuButtonOptions then return _G.GameMenuButtonOptions end
+    elseif targetText == "UIOptions" or targetText == UIOPTIONS_MENU then
+        if _G.GameMenuButtonUIOptions then return _G.GameMenuButtonUIOptions end
+    end
+
+    -- 2. Check modern buttonPool
+    if GameMenuFrame and GameMenuFrame.buttonPool then
+        for b in GameMenuFrame.buttonPool:EnumerateActive() do
+            local txt = b:GetText()
+            if txt and (txt == targetText or txt == _G[targetText] or txt:find(targetText, 1, true)) then
+                return b
+            end
+        end
+    end
+
+    -- 3. Check direct children
+    if GameMenuFrame and GameMenuFrame.GetChildren then
+        for _, child in ipairs({ GameMenuFrame:GetChildren() }) do
+            if child and child.GetText then
+                local txt = child:GetText()
+                if txt and (txt == targetText or txt == _G[targetText] or txt:find(targetText, 1, true)) then
+                    return child
+                end
+            end
+        end
+    end
+
+    return nil
+end
+
+local isPositioning = false
+local function PositionGameMenuButton(isFromLayout)
+    if isPositioning then return end
+    if not gameMenuButton or not GameMenuFrame or not GameMenuFrame:IsShown() then return end
+
+    -- Guard against modifying secure frames in combat
+    if InCombatLockdown() then
+        gameMenuButton:Disable()
+        gameMenuButton:SetAlpha(0.5)
+        return
+    else
+        gameMenuButton:Enable()
+        gameMenuButton:SetAlpha(1.0)
+    end
+
+    -- If GameMenuFrame supports Layout, let Blizzard's Layout trigger the reposition pass
+    if not isFromLayout and GameMenuFrame.Layout then
+        return
+    end
+
+    isPositioning = true
+
+    -- Locate Macros button to anchor below (fallback to Options or UI Options)
+    local macroBtn = FindGameMenuButton(MACROS) or FindGameMenuButton("Macros")
+    if not macroBtn then
+        macroBtn = FindGameMenuButton(OPTIONS) or FindGameMenuButton("Options") or FindGameMenuButton(UIOPTIONS_MENU)
+    end
+
+    if not macroBtn then
+        isPositioning = false
+        return
+    end
+
+    local btnW = macroBtn:GetWidth()
+    local btnH = macroBtn:GetHeight()
+    if not btnH or btnH <= 0 then btnH = 22 end
+    if btnW and btnW > 0 then
+        gameMenuButton:SetSize(btnW, btnH)
+    end
+
+    -- Anchor Bleakfiber button tightly below Macros (1px spacing)
+    local buttonSpacing = 1
+    gameMenuButton:ClearAllPoints()
+    gameMenuButton:SetPoint("TOP", macroBtn, "BOTTOM", 0, -buttonSpacing)
+    gameMenuButton:Show()
+
+    local extraH = btnH + buttonSpacing
+
+    -- In modern WoW, buttons in buttonPool are anchored independently to GameMenuFrame.
+    -- Push ALL buttons below Macros (Log Out, Exit Game, Return to Game) down by extraH.
+    local macroBottom = macroBtn:GetBottom()
+    if macroBottom and GameMenuFrame.buttonPool then
+        for menuBtn in GameMenuFrame.buttonPool:EnumerateActive() do
+            if menuBtn ~= gameMenuButton and menuBtn ~= macroBtn then
+                local top = menuBtn:GetTop()
+                if top and top < macroBottom + 2 then
+                    local p, rel, rp, x, y = menuBtn:GetPoint(1)
+                    if p then
+                        menuBtn:ClearAllPoints()
+                        menuBtn:SetPoint(p, rel, rp, x, (y or 0) - extraH)
+                    end
+                end
+            end
+        end
+    elseif macroBottom and _G.GameMenuButtonLogout then
+        local logoutTop = _G.GameMenuButtonLogout:GetTop()
+        if logoutTop and logoutTop < macroBottom + 2 then
+            local p, rel, rp, x, y = _G.GameMenuButtonLogout:GetPoint(1)
+            if p and (rel == macroBtn or rel == _G.GameMenuButtonMacros) then
+                _G.GameMenuButtonLogout:ClearAllPoints()
+                _G.GameMenuButtonLogout:SetPoint("TOP", gameMenuButton, "BOTTOM", 0, -buttonSpacing)
+            end
+        end
+    end
+
+    -- Expand GameMenuFrame height by the exact height of our button + spacing
+    if not GameMenuFrame._bacHeightExpanded then
+        GameMenuFrame._bacHeightExpanded = true
+        local currentH = GameMenuFrame:GetHeight()
+        if currentH and currentH > 0 then
+            GameMenuFrame:SetHeight(currentH + extraH)
+        end
+    end
+
+    isPositioning = false
+end
+
+function BAC:InitializeGameMenuButton()
+    if gameMenuButton or not GameMenuFrame then return end
+
+    local btn = nil
+    local templates = { "GameMenuButtonTemplate", "MainMenuFrameButtonTemplate", "UIPanelButtonTemplate" }
+    for _, tmpl in ipairs(templates) do
+        local ok, frame = pcall(CreateFrame, "Button", "Bleakfibers_GameMenuButton", GameMenuFrame, tmpl)
+        if ok and frame and frame.SetText then
+            btn = frame
+            break
+        end
+    end
+    if not btn then
+        btn = CreateFrame("Button", "Bleakfibers_GameMenuButton", GameMenuFrame)
+    end
+
+    btn:SetSize(200, 22)
+    btn:SetText("|cFFFFD100Bleakfiber's|r Config")
+
+    btn:SetScript("OnClick", function()
+        if InCombatLockdown() then
+            DEFAULT_CHAT_FRAME:AddMessage("|cFFFF2020[Bleakfiber's Addon Config] Cannot open configuration during combat.|r")
+            return
+        end
+        HideUIPanel(GameMenuFrame)
+        BAC:ToggleUI()
+    end)
+
+    btn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:AddLine("|cFFFFD100Bleakfiber's Addon Config|r", 1, 1, 1)
+        if InCombatLockdown() then
+            GameTooltip:AddLine("Configuration is disabled while in combat.", 1.0, 0.2, 0.2)
+        else
+            GameTooltip:AddLine("Open master addon suite settings (/bac).", 0.7, 0.7, 0.7)
+        end
+        GameTooltip:Show()
+    end)
+    btn:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+
+    gameMenuButton = btn
+
+    if GameMenuFrame.Layout then
+        hooksecurefunc(GameMenuFrame, "Layout", function()
+            PositionGameMenuButton(true)
+        end)
+    else
+        GameMenuFrame:HookScript("OnShow", function()
+            PositionGameMenuButton(false)
+        end)
+    end
+
+    GameMenuFrame:HookScript("OnHide", function()
+        GameMenuFrame._bacHeightExpanded = false
+    end)
+
+    -- Combat listener to enable/disable button
+    local combatFrame = CreateFrame("Frame")
+    combatFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
+    combatFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+    combatFrame:SetScript("OnEvent", function(_, event)
+        if gameMenuButton then
+            if event == "PLAYER_REGEN_DISABLED" then
+                gameMenuButton:Disable()
+                gameMenuButton:SetAlpha(0.5)
+            else
+                gameMenuButton:Enable()
+                gameMenuButton:SetAlpha(1.0)
+                if GameMenuFrame and GameMenuFrame:IsShown() then
+                    PositionGameMenuButton(false)
+                end
+            end
+        end
+    end)
+end
+
+-- Initialize Game Menu Button integration immediately if GameMenuFrame is ready
+BAC:InitializeGameMenuButton()
+
