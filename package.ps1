@@ -3,7 +3,7 @@
     Automated Packaging Script
     Usage:
         .\package.ps1
-        .\package.ps1 -Version "1.0.02" -Notes "Description of changes"
+        .\package.ps1 -Version "1.0.10" -Notes "Description of changes"
 #>
 
 param (
@@ -34,7 +34,7 @@ if ($Version) {
     if ($tocContent -match '## Version:\s*([^\r\n]+)') {
         $Version = $matches[1].Trim()
     } else {
-        $Version = "1.0.01"
+        $Version = "1.0.10"
     }
 }
 
@@ -66,17 +66,29 @@ $noteBody
     }
 }
 
-# Create Zip Archive
-$zipName = "BleakfibersAddonConfig-Forever $Version.zip"
-$zipPath = Join-Path $rootDir $zipName
+# Ensure \zips directory exists
+$zipsDir = Join-Path $rootDir "zips"
+if (-not (Test-Path $zipsDir)) {
+    New-Item -ItemType Directory -Path $zipsDir -Force | Out-Null
+}
 
-Write-Host "Compressing addon into $zipName..." -ForegroundColor Cyan
+# Create Zip Archive directly in \zips
+$zipName = "BleakfibersAddonConfig-Forever $Version.zip"
+$zipPath = Join-Path $zipsDir $zipName
+
+Write-Host "Compressing addon into zips/$zipName..." -ForegroundColor Cyan
 Compress-Archive -Path $addonDir -DestinationPath $zipPath -Force
 
-$zipsDir = Join-Path $rootDir "zips"
-if (Test-Path $zipsDir) {
-    Copy-Item -Path $zipPath -Destination $zipsDir -Force
-    Write-Host "Archived copy to zips/$zipName" -ForegroundColor Cyan
+# Clean up duplicate / legacy zip archives in root
+Get-ChildItem -Path $rootDir -Filter "*.zip" -File | ForEach-Object {
+    $targetInZips = Join-Path $zipsDir $_.Name
+    if (-not (Test-Path $targetInZips)) {
+        Move-Item -Path $_.FullName -Destination $targetInZips -Force
+        Write-Host "Moved legacy archive to zips/$($_.Name)" -ForegroundColor Cyan
+    } else {
+        Remove-Item -Path $_.FullName -Force
+        Write-Host "Removed duplicate root archive: $($_.Name)" -ForegroundColor Yellow
+    }
 }
 
 $changelogsDir = Join-Path $rootDir "changelogs"
@@ -84,4 +96,4 @@ if (Test-Path $changelogsDir) {
     Copy-Item -Path $changelogFile -Destination (Join-Path $changelogsDir "changelog.md") -Force
 }
 
-Write-Host "Successfully packaged: $zipName" -ForegroundColor Green
+Write-Host "Successfully packaged: zips/$zipName" -ForegroundColor Green
