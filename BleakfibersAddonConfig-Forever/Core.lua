@@ -10,7 +10,7 @@ local BAC = BleakfibersAddonConfigForever
 -- Module registry and ordered keys
 BAC.modules = {}
 BAC.moduleOrder = {}
-BAC.version = "1.0.07"
+BAC.version = "1.0.9"
 
 -- Database defaults
 local DB_DEFAULTS = {
@@ -85,6 +85,20 @@ function BAC:RegisterModule(moduleID, moduleData)
             Reset = moduleData.resetMovers,
             IsUnlocked = moduleData.isMoversUnlocked,
         }
+    end
+
+    -- Import any existing profiles from the registering module so we never lose user profiles
+    if moduleData.profiles and type(moduleData.profiles.List) == "function" then
+        local ok, pList = pcall(moduleData.profiles.List)
+        if ok and type(pList) == "table" then
+            if not BleakfibersConfigDB then BleakfibersConfigDB = {} end
+            if not BleakfibersConfigDB.profiles then BleakfibersConfigDB.profiles = { ["Default"] = true } end
+            for _, pName in ipairs(pList) do
+                if type(pName) == "string" and pName ~= "" then
+                    BleakfibersConfigDB.profiles[pName] = true
+                end
+            end
+        end
     end
 
     -- Sync active master profile to the newly registered module if supported
@@ -234,6 +248,17 @@ function BAC:ToggleAllMovers(forceState)
         end
     end
 
+    -- Update global floating "BAC: Mover Mode" dialog frame
+    if newState then
+        if self.ShowMoverControlFrame then
+            self:ShowMoverControlFrame()
+        end
+    else
+        if self.HideMoverControlFrame then
+            self:HideMoverControlFrame()
+        end
+    end
+
     -- Update UI button states if window is open
     if self.UpdateMoverButtonState then
         self:UpdateMoverButtonState()
@@ -276,11 +301,33 @@ function BAC:GetActiveProfile()
 end
 
 function BAC:GetProfiles()
-    local list = {}
+    local profileMap = {}
     if BleakfibersConfigDB and BleakfibersConfigDB.profiles then
         for profileName in pairs(BleakfibersConfigDB.profiles) do
-            table.insert(list, profileName)
+            profileMap[profileName] = true
         end
+    end
+
+    -- Dynamically gather any profiles existing in registered modules
+    for id, mod in pairs(self.modules) do
+        if mod.profiles and type(mod.profiles.List) == "function" then
+            local ok, pList = pcall(mod.profiles.List)
+            if ok and type(pList) == "table" then
+                for _, pName in ipairs(pList) do
+                    if type(pName) == "string" and pName ~= "" then
+                        profileMap[pName] = true
+                        if BleakfibersConfigDB and BleakfibersConfigDB.profiles then
+                            BleakfibersConfigDB.profiles[pName] = true
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    local list = {}
+    for profileName in pairs(profileMap) do
+        table.insert(list, profileName)
     end
     if #list == 0 then
         table.insert(list, "Default")
@@ -329,19 +376,54 @@ end
 function BAC:CreateProfile(profileKey)
     if not profileKey or type(profileKey) ~= "string" or profileKey == "" then return end
 
+    local fromProf = self:GetActiveProfile()
     if not BleakfibersConfigDB then BleakfibersConfigDB = {} end
     if not BleakfibersConfigDB.profiles then BleakfibersConfigDB.profiles = { ["Default"] = true } end
 
     BleakfibersConfigDB.profiles[profileKey] = true
 
-    -- Notify modules that support Create
+    -- Non-destructive profile creation across all registered modules:
+    -- 1. If an individual addon ALREADY has an existing profile with this name, DO NOT OVERWRITE IT. Just activate it.
+    -- 2. If an individual addon does NOT have this profile yet, capture its current settings into the new profile!
     for id, mod in pairs(self.modules) do
-        if mod.profiles and type(mod.profiles.Create) == "function" then
-            pcall(mod.profiles.Create, profileKey)
+        if mod.profiles then
+            local alreadyExists = false
+            if type(mod.profiles.List) == "function" then
+                local ok, pList = pcall(mod.profiles.List)
+                if ok and type(pList) == "table" then
+                    for _, pName in ipairs(pList) do
+                        if pName == profileKey then
+                            alreadyExists = true
+                            break
+                        end
+                    end
+                end
+            end
+
+            if alreadyExists then
+                -- Addon already has a profile with this name: PRESERVE IT (never overwrite!)
+                if type(mod.profiles.SetCurrent) == "function" then
+                    pcall(mod.profiles.SetCurrent, profileKey)
+                end
+            else
+                -- New profile for this addon: capture current settings
+                if type(mod.profiles.Create) == "function" then
+                    pcall(mod.profiles.Create, profileKey, fromProf)
+                elseif type(mod.profiles.SaveCurrentAs) == "function" then
+                    pcall(mod.profiles.SaveCurrentAs, profileKey)
+                elseif type(mod.profiles.Copy) == "function" then
+                    pcall(mod.profiles.Copy, fromProf, profileKey)
+                elseif type(mod.profiles.SetCurrent) == "function" then
+                    pcall(mod.profiles.SetCurrent, profileKey)
+                end
+            end
+        elseif mod.setProfile and type(mod.setProfile) == "function" then
+            pcall(mod.setProfile, profileKey)
         end
     end
 
     self:SetActiveProfile(profileKey)
+    DEFAULT_CHAT_FRAME:AddMessage(string.format("|cFFFFD100[Bleakfiber's Addon Config]|r Created new profile '|cFF00FF00%s|r' (captured current settings).", profileKey))
 end
 
 function BAC:SaveCurrentAsProfile(profileKey)
@@ -358,16 +440,18 @@ function BAC:SaveCurrentAsProfile(profileKey)
         if mod.profiles then
             if type(mod.profiles.SaveCurrentAs) == "function" then
                 pcall(mod.profiles.SaveCurrentAs, profileKey)
-            elseif type(mod.profiles.Copy) == "function" then
-                pcall(mod.profiles.Copy, fromProf, profileKey)
             elseif type(mod.profiles.Create) == "function" then
                 pcall(mod.profiles.Create, profileKey, fromProf)
+            elseif type(mod.profiles.Copy) == "function" then
+                pcall(mod.profiles.Copy, fromProf, profileKey)
+            elseif type(mod.profiles.SetCurrent) == "function" then
+                pcall(mod.profiles.SetCurrent, profileKey)
             end
         end
     end
 
     self:SetActiveProfile(profileKey)
-    DEFAULT_CHAT_FRAME:AddMessage(string.format("|cFFFFD100[Bleakfiber's Addon Config]|r Saved current settings as new profile '|cFF00FF00%s|r'.", profileKey))
+    DEFAULT_CHAT_FRAME:AddMessage(string.format("|cFFFFD100[Bleakfiber's Addon Config]|r Saved current settings as profile '|cFF00FF00%s|r'.", profileKey))
 end
 
 function BAC:DeleteProfile(profileKey)

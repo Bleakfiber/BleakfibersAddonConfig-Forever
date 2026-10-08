@@ -54,6 +54,49 @@ BAC.UI.COLORS = COLORS
 BAC.UI.MAIN_WINDOW_BACKDROP = MAIN_WINDOW_BACKDROP
 BAC.UI.INSET_BACKDROP = INSET_BACKDROP
 
+function BAC.UI:SetupAutoScroll(scrollFrame, scrollChild)
+    if not (scrollFrame and scrollChild) then return end
+    local scrollBar = _G[scrollFrame:GetName() and (scrollFrame:GetName() .. "ScrollBar")]
+
+    local function UpdateScrollState()
+        local frameHeight = scrollFrame:GetHeight()
+        local childHeight = scrollChild:GetHeight()
+        if not frameHeight or frameHeight <= 0 then return end
+        if childHeight <= frameHeight + 2 then
+            if scrollBar and scrollBar:IsShown() then
+                scrollBar:Hide()
+            end
+            scrollFrame:EnableMouseWheel(false)
+            scrollFrame:SetVerticalScroll(0)
+        else
+            if scrollBar and not scrollBar:IsShown() then
+                scrollBar:Show()
+            end
+            scrollFrame:EnableMouseWheel(true)
+        end
+    end
+
+    scrollFrame:EnableMouseWheel(true)
+    scrollFrame:SetScript("OnMouseWheel", function(self, delta)
+        local frameHeight = self:GetHeight()
+        local childHeight = scrollChild:GetHeight()
+        if not frameHeight or childHeight <= frameHeight + 2 then return end
+        local cur = self:GetVerticalScroll()
+        local maxScroll = math.max(0, childHeight - frameHeight)
+        local step = 32
+        local newScroll = cur - (delta * step)
+        if newScroll < 0 then newScroll = 0 end
+        if newScroll > maxScroll then newScroll = maxScroll end
+        self:SetVerticalScroll(newScroll)
+    end)
+
+    scrollFrame:HookScript("OnSizeChanged", UpdateScrollState)
+    scrollChild:HookScript("OnSizeChanged", UpdateScrollState)
+    scrollFrame:HookScript("OnShow", UpdateScrollState)
+    UpdateScrollState()
+    return UpdateScrollState
+end
+
 function BAC.UI:CreateSectionHeader(parent, text, pointOrX, relPointOrY, x, y)
     local header = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     if y ~= nil then
@@ -343,7 +386,7 @@ StaticPopupDialogs["BLEAKFIBERS_SAVE_AS_PROFILE"] = {
 }
 
 StaticPopupDialogs["BLEAKFIBERS_NEW_PROFILE"] = {
-    text = "Enter a name for the new blank profile:",
+    text = "Enter a name for the new profile:\n|cFF88FF88(Current settings will be copied to new profile)|r",
     button1 = ACCEPT,
     button2 = CANCEL,
     hasEditBox = 1,
@@ -656,6 +699,7 @@ function BAC:CreateMasterFrame()
     scrollChild:SetSize(155, 1) -- Height dynamically adjusted
     sidebarScroll:SetScrollChild(scrollChild)
     f.sidebarScrollChild = scrollChild
+    f.sidebarScrollUpdate = BAC.UI:SetupAutoScroll(sidebarScroll, scrollChild)
 
     -- Right Content Pane
     local contentPane = CreateFrame("Frame", nil, f, BACKDROP_TEMPLATE)
@@ -984,6 +1028,9 @@ function BAC:RefreshSidebar()
     end
 
     scrollChild:SetHeight(math.max(currentY + 6, 1))
+    if self.frame and self.frame.sidebarScrollUpdate then
+        self.frame.sidebarScrollUpdate()
+    end
     self:UpdateTabHighlights()
 end
 
@@ -1128,12 +1175,100 @@ function BAC:SelectModule(moduleID)
 end
 
 --[[-----------------------------------------------------------------------------
+    Global Floating Mover Control Dialog ("BAC: Mover Mode")
+-------------------------------------------------------------------------------]]
+function BAC:EnsureMoverControlFrame()
+    if self.moverControlFrame then return self.moverControlFrame end
+
+    local ctrl = CreateFrame("Frame", "BleakfibersAddonConfig_MoverControlFrame", UIParent, BACKDROP_TEMPLATE)
+    ctrl:SetSize(280, 52)
+    ctrl:SetPoint("TOP", UIParent, "TOP", 0, -24)
+    ctrl:SetFrameStrata("DIALOG")
+    ctrl:SetMovable(true)
+    ctrl:EnableMouse(true)
+    ctrl:RegisterForDrag("LeftButton")
+    ctrl:SetScript("OnDragStart", function(self) self:StartMoving() end)
+    ctrl:SetScript("OnDragStop", function(self) self:StopMovingOrSizing() end)
+    ctrl:SetClampedToScreen(true)
+
+    ctrl:SetBackdrop(MAIN_WINDOW_BACKDROP)
+    ctrl:SetBackdropColor(unpack(COLORS.bgSlate))
+    ctrl:SetBackdropBorderColor(unpack(COLORS.goldBorder))
+
+    local title = ctrl:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    title:SetPoint("TOP", ctrl, "TOP", 0, -7)
+    title:SetText("|cFFFFD100BAC: Mover Mode|r")
+
+    local lockBtn = CreateFrame("Button", nil, ctrl, BACKDROP_TEMPLATE)
+    lockBtn:SetSize(110, 22)
+    lockBtn:SetPoint("BOTTOMLEFT", ctrl, "BOTTOMLEFT", 12, 6)
+    lockBtn:SetBackdrop(INSET_BACKDROP)
+    lockBtn:SetBackdropColor(0.12, 0.14, 0.18, 0.9)
+    lockBtn:SetBackdropBorderColor(unpack(COLORS.goldBorder))
+    local lockText = lockBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    lockText:SetPoint("CENTER")
+    lockText:SetText("|cFF00FF00Lock Movers|r")
+    lockBtn:SetScript("OnEnter", function(btn)
+        btn:SetBackdropColor(0.20, 0.22, 0.28, 0.95)
+    end)
+    lockBtn:SetScript("OnLeave", function(btn)
+        btn:SetBackdropColor(0.12, 0.14, 0.18, 0.9)
+    end)
+    lockBtn:SetScript("OnClick", function()
+        BAC:ToggleAllMovers(false)
+    end)
+
+    local resetBtn = CreateFrame("Button", nil, ctrl, BACKDROP_TEMPLATE)
+    resetBtn:SetSize(110, 22)
+    resetBtn:SetPoint("BOTTOMRIGHT", ctrl, "BOTTOMRIGHT", -12, 6)
+    resetBtn:SetBackdrop(INSET_BACKDROP)
+    resetBtn:SetBackdropColor(0.12, 0.14, 0.18, 0.9)
+    resetBtn:SetBackdropBorderColor(unpack(COLORS.goldMuted))
+    local resetText = resetBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    resetText:SetPoint("CENTER")
+    resetText:SetText("|cFFFFCC66Reset All|r")
+    resetBtn:SetScript("OnEnter", function(btn)
+        btn:SetBackdropColor(0.20, 0.22, 0.28, 0.95)
+    end)
+    resetBtn:SetScript("OnLeave", function(btn)
+        btn:SetBackdropColor(0.12, 0.14, 0.18, 0.9)
+    end)
+    resetBtn:SetScript("OnClick", function()
+        BAC:ResetAllMovers()
+    end)
+
+    ctrl:Hide()
+    self.moverControlFrame = ctrl
+    return ctrl
+end
+
+function BAC:ShowMoverControlFrame()
+    local ctrl = self:EnsureMoverControlFrame()
+    if ctrl then
+        ctrl:Show()
+    end
+end
+
+function BAC:HideMoverControlFrame()
+    if self.moverControlFrame then
+        self.moverControlFrame:Hide()
+    end
+end
+
+--[[-----------------------------------------------------------------------------
     Update Mover Button States (Global & Module-specific)
 -------------------------------------------------------------------------------]]
 function BAC:UpdateMoverButtonState()
-    if not self.frame then return end
-
     local areUnlocked = self:AreMoversUnlocked()
+
+    -- Synchronize global floating "BAC: Mover Mode" frame
+    if areUnlocked then
+        self:ShowMoverControlFrame()
+    else
+        self:HideMoverControlFrame()
+    end
+
+    if not self.frame then return end
 
     -- 1. Global Movers Button in Title Bar
     local gBtn = self.frame.globalMoverBtn
@@ -1337,7 +1472,7 @@ function BAC:ToggleProfileMenu(anchorBtn)
     newBtn:ClearAllPoints()
     newBtn:SetPoint("TOPLEFT", menu, "TOPLEFT", 6, currentY)
     newBtn:SetPoint("TOPRIGHT", menu, "TOPRIGHT", -6, currentY)
-    newBtn.text:SetText("|cFFFFD100+ New Blank Profile...|r")
+    newBtn.text:SetText("|cFFFFD100+ New Profile...|r")
     newBtn:SetBackdropColor(0.12, 0.14, 0.17, 0.65)
     newBtn:SetBackdropBorderColor(unpack(COLORS.goldMuted))
     newBtn:SetScript("OnClick", function()
