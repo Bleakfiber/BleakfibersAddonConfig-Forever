@@ -2,7 +2,7 @@
 ## Title: Bleakfiber's Addon Config - Forever
 ## Notes: Centralized configuration hub for Bleakfiber's standalone addons.
 ## Author: Bleakfiber
-## Version: 1.1.0
+## Version: 1.1.1
 ## SavedVariables: BleakfibersConfigDB
 ## X-License: Restricted - Source Available (All Rights Reserved, No Derivatives)
 

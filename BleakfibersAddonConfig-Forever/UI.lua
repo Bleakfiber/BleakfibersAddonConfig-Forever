@@ -343,7 +343,7 @@ function BAC.UI:CreateDropdown(parent, name, labelText, items, x, y, width, getF
 
     local arrow = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     arrow:SetPoint("RIGHT", btn, "RIGHT", -6, 0)
-    arrow:SetText("|cFFFFD100▼|r")
+    arrow:SetText("|cFFFFD100v|r")
 
     local function GetItemsList()
         if type(items) == "function" then
@@ -465,7 +465,7 @@ function BAC.UI:CreateDropdown(parent, name, labelText, items, x, y, width, getF
             b.isActive = isActive
             if isActive then
                 selectedIndex = i
-                b.text:SetText("|cFFFFD100✔ |r" .. itm.text)
+                b.text:SetText("|cFFFFD100* |r" .. itm.text)
                 b:SetBackdropColor(0.22, 0.19, 0.12, 0.95)
                 b:SetBackdropBorderColor(unpack(COLORS.goldBorder))
             else
@@ -1709,7 +1709,7 @@ function BAC:ToggleProfileMenu(anchorBtn)
         local isActive = (pName == activeProf)
         btn.isActive = isActive
         if isActive then
-            btn.text:SetText("|cFF00FF00✔|r |cFFFFD100" .. pName .. "|r")
+            btn.text:SetText("|cFF00FF00*|r |cFFFFD100" .. pName .. "|r")
             btn:SetBackdropColor(0.22, 0.19, 0.12, 0.95)
             btn:SetBackdropBorderColor(unpack(COLORS.goldBorder))
         else

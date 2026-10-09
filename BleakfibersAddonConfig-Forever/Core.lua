@@ -10,7 +10,7 @@ local BAC = BleakfibersAddonConfigForever
 -- Module registry and ordered keys
 BAC.modules = {}
 BAC.moduleOrder = {}
-BAC.version = "1.1.0"
+BAC.version = "1.1.1"
 
 -- Database defaults
 local DB_DEFAULTS = {
